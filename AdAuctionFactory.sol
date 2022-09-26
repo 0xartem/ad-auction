@@ -4,7 +4,7 @@ pragma solidity ^0.8.0;
 
 import { AdAuction } from './AdAuction.sol';
 
-contract AdAuctoinFactory {
+contract AdAuctionFactory {
 
     AdAuction[] public adAuctionArray;
 
