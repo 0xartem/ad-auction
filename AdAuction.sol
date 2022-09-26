@@ -29,7 +29,7 @@ contract AdAuction {
         priceFeed = AggregatorV3Interface(0xD4a33860578De61DBAbDc8BFdb98FD742fA7028e); // Goerli
         startAuctionTime = _startAuctionTime;
         endAuctionTime = _endAuctionTime;
-        minimumUsdBid = _minimumUsdBid;
+        minimumUsdBid = _minimumUsdBid * 1e18;
     }
 
     function payForAd(string calldata _name, string calldata _imageUrl, string calldata _text) payable external {
