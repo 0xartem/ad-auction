@@ -16,6 +16,7 @@ contract AdAuction {
 
     uint256 startAuctionTime;
     uint256 endAuctionTime;
+    uint256 minimumUsdBid;
 
     address public highestBidderAddr;
     Payer public highestBidderData;
@@ -24,16 +25,20 @@ contract AdAuction {
 
     AggregatorV3Interface internal priceFeed;
 
-    constructor(uint256 _startAuctionTime, uint256 _endAuctionTime) {
+    constructor(uint256 _startAuctionTime, uint256 _endAuctionTime, uint256 _minimumUsdBid) {
         priceFeed = AggregatorV3Interface(0xD4a33860578De61DBAbDc8BFdb98FD742fA7028e); // Goerli
         startAuctionTime = _startAuctionTime;
         endAuctionTime = _endAuctionTime;
+        minimumUsdBid = _minimumUsdBid;
     }
 
     function payForAd(string calldata _name, string calldata _imageUrl, string calldata _text) payable external {
         require(startAuctionTime <= block.timestamp, "AdAuction::payForAd: The auction hasn't started yet");
         require(endAuctionTime >= block.timestamp, "AdAuction::payForAd: The auction is already over");
-        require(msg.value > 0, "AdAuction::payForAd: Ad payment must be greater than zero");
+        
+        uint256 bidInUsd = getConversionRate(msg.value);
+        require(bidInUsd > minimumUsdBid, "AdAuction::payForAd: Ad bid is lower than minium auction bin in USD");
+        
         if (msg.value > highestBidderData.amount) {
             Payer memory payer = Payer(_name, msg.value, _imageUrl, _text);
             addressToPayer[msg.sender] = payer;
