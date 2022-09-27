@@ -13,10 +13,17 @@ library PriceOracle {
         return uint256(usdPrice) * 1 ** (18 - decimals);
     }
 
-    function getConversionRate(uint256 eth) public view returns (uint256) {
+    function convertEthToUsd(uint256 ethAmount) public view returns (uint256) {
         AggregatorV3Interface priceFeed = AggregatorV3Interface(0xD4a33860578De61DBAbDc8BFdb98FD742fA7028e); // Goerli
         uint256 ethPrice = getPrice();
-        uint256 ethInUsd = (ethPrice * usdPrice) / 1e18;
-        return ethInUsd;
+        uint256 usdAmount = (ethAmount * ethPrice) / 1e18;
+        return usdAmount;
+    }
+
+    function convertUsdToEth(uint256 usd) public view returns (uint256) {
+        AggregatorV3Interface priceFeed = AggregatorV3Interface(0xD4a33860578De61DBAbDc8BFdb98FD742fA7028e); // Goerli
+        uint256 ethPrice = getPrice();
+        uint256 ethAmount = (usd / ethPrice); //todo: check math
+        return ethAmount;
     }
 }
