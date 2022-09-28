@@ -41,13 +41,14 @@ contract AdAuction {
         bool withdrew;
     }
 
-    address public owner;
+    address public immutable owner;
     
-    uint256 public startAuctionTime;
-    uint256 public endAuctionTime;
-    uint256 public minimumBlockUsdBid;
-    uint256 public ownerBalanceAvailable;
+    uint256 public constant MINIMUM_BID_REQUIREMENT = 0;
+    uint256 public immutable startAuctionTime;
+    uint256 public immutable endAuctionTime;
+    uint256 public immutable minimumBlockUsdBid;
 
+    uint256 public ownerBalanceAvailable;
     address public highestBidderAddr;
     mapping (address => Payer) public addressToPayer;
 
@@ -55,7 +56,7 @@ contract AdAuction {
         owner = msg.sender;
 
         if (_endAuctionTime <= _startAuctionTime) revert InvalidAuctionPeriod();
-        if (_minimumBlockUsdBid == 0) revert InvalidMinimumBidRequirement();
+        if (_minimumBlockUsdBid < MINIMUM_BID_REQUIREMENT) revert InvalidMinimumBidRequirement();
 
         startAuctionTime = _startAuctionTime;
         endAuctionTime = _endAuctionTime;
