@@ -10,6 +10,6 @@
     "solc": "^0.8.17"
   },
   "scripts": {
-    "compile": "yarn solcjs --bin --abi --include-path node_modules/ --base-path . -o . AdAuction.sol AdAuctionFactory.sol"
+    "compile": "yarn solcjs --bin --abi --include-path node_modules/ --base-path . -o ./bin AdAuction.sol AdAuctionFactory.sol"
   }
 }

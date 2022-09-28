@@ -17,6 +17,7 @@ contract AdAuction is IAdAuction {
 
     error InvalidMinimumBidRequirement();
     error BidIsLowerThanMinimum();
+    error HigherBidIsAvailable();
     error PaidAmountIsLowerThanBid();
 
     error NoSuchPayer();
@@ -27,6 +28,7 @@ contract AdAuction is IAdAuction {
     error AdAuctionBalanceIsTooLow();
     error OwnerWithdrawalFailed();
 
+    error NoWinnerInAuction();
     error NoFundsToCharge();
 
     struct Payer {
@@ -83,49 +85,33 @@ contract AdAuction is IAdAuction {
             revert PaidAmountIsLowerThanBid();
 
         Payer storage payer = addressToPayer[msg.sender];
-        if (payer.blockUsdBid == 0) {
-            // New Payer
-            payer = Payer(
-                msg.value,
-                0,
-                _blockUsdBid,
-                0,
-                _name,
-                _imageUrl,
-                _text,
-                false
-            );
-        } else {
-            // Existing Payer
-            payer.ethBalance += msg.value;
-            payer.blockUsdBid = _blockUsdBid;
-            payer.name = _name;
-            payer.imageUrl = _imageUrl;
-            payer.text = _text;
-            payer.withdrew = false;
-        }
+        payer.ethBalance += msg.value;
+        payer.blockUsdBid = _blockUsdBid;
+        payer.name = _name;
+        payer.imageUrl = _imageUrl;
+        payer.text = _text;
+        payer.withdrew = false;
+
         highestBidderAddr = msg.sender;
 
-        uint256 usdBalance = payer.ethBalance.getConversionRate();
+        uint256 usdBalance = payer.ethBalance.convertEthToUsd();
         uint256 timeLeft = (usdBalance / _blockUsdBid) * 12; // 12 secs per block
         payer.timeLeft = timeLeft;
     }
 
     function topUp() public payable {
         if (block.timestamp < startAuctionTime) revert AuctionHasntStartedYet();
-        if (msg.value.convertEthToUsd() < _blockUsdBid)
-            revert PaidAmountIsLowerThanBid();
 
         Payer storage payer = addressToPayer[msg.sender];
-        if (payer.blockUsdBid == 0) {
-            revert NoSuchPayer();
-        } else {
-            payer.ethBalance += msg.value;
-            payer.withdrew = false;
-        }
+        if (payer.blockUsdBid == 0) revert NoSuchPayer();
+        if (msg.value.convertEthToUsd() < payer.blockUsdBid)
+            revert PaidAmountIsLowerThanBid();
 
-        uint256 usdBalance = payer.ethBalance.getConversionRate();
-        uint256 timeLeft = (usdBalance / _blockUsdBid) * 12; // 12 secs per block
+        payer.ethBalance += msg.value;
+        payer.withdrew = false;
+
+        uint256 usdBalance = payer.ethBalance.convertEthToUsd();
+        uint256 timeLeft = (usdBalance / payer.blockUsdBid) * 12; // 12 secs per block
         payer.timeLeft = timeLeft;
     }
 
@@ -142,15 +128,18 @@ contract AdAuction is IAdAuction {
 
         addressToPayer[msg.sender].withdrew = true;
 
-        (bool res, ) = receiver.call{value: payer.ethAmount}(""); // convert to payable?
+        (bool res, ) = receiver.call{value: payer.ethBalance}(""); // convert to payable?
         if (!res) revert BidWithdrawalFailed();
     }
 
     function withdraw(address receiver) external onlyOwner {
         if (block.timestamp <= endAuctionTime) revert AuctionIsNotOverYet();
 
+        Payer storage winner = addressToPayer[highestBidderAddr];
+        if (winner.blockUsdBid == 0) revert NoWinnerInAuction();
+
         if (winner.ethBalance > 0) {
-            chargeForAdCalc();
+            chargeForAdCalc(winner);
         }
 
         if (address(this).balance < ownerBalanceAvailable)
@@ -163,22 +152,18 @@ contract AdAuction is IAdAuction {
 
     function chargeForAd() external onlyOwner {
         if (block.timestamp <= endAuctionTime) revert AuctionIsNotOverYet();
-        chargeForAdCalc();
+        Payer storage winner = addressToPayer[highestBidderAddr];
+        if (winner.blockUsdBid == 0) revert NoWinnerInAuction();
+        chargeForAdCalc(winner);
     }
 
-    function chargeForAdCalc() internal onlyOwner {
+    function chargeForAdCalc(Payer storage winner) internal onlyOwner {
         if (winner.ethBalance == 0) revert NoFundsToCharge();
-        assert(
-            winner.timeLeft == 0,
-            "AdAuction::chargeForAd: Panic. Time left must be zero if eth balance is zero."
-        );
+        assert(winner.timeLeft == 0); // Should never happen
 
-        Payer storage winner = addressToPayer[highestBidderAddr];
-        uint256 timeLeft = winner.timeLeft;
-        uint256 cutOffTime = endAuctionTime + winner.timeLeft;
         uint256 timeUsed = block.timestamp - endAuctionTime;
 
-        if (timeUsed >= timeLeft) {
+        if (timeUsed >= winner.timeLeft) {
             winner.ethUsed += winner.ethBalance;
             ownerBalanceAvailable += winner.ethBalance;
             winner.ethBalance = 0;
@@ -189,7 +174,7 @@ contract AdAuction is IAdAuction {
             uint256 oldUsdBalance = winner.ethBalance.convertEthToUsd();
             uint256 newUsdBalance = oldUsdBalance - paidInUsd;
 
-            winner.timeLeft = timeLeft - timeUsed;
+            winner.timeLeft = winner.timeLeft - timeUsed;
 
             winner.ethBalance = newUsdBalance.convertUsdToEth();
             uint256 paidInEth = paidInUsd.convertUsdToEth();
@@ -208,5 +193,6 @@ contract AdAuction is IAdAuction {
 
     modifier onlyOwner() {
         if (msg.sender != owner) revert NotOwner();
+        _;
     }
 }
