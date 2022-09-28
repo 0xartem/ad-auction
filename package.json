@@ -4,5 +4,12 @@
   "description": "App allowing anyone to pay more ETH than the last person in order to change the text and image link on the website",
   "main": "index.js",
   "author": "artem0x",
-  "license": "MIT"
+  "license": "MIT",
+  "dependencies": {
+    "@chainlink/contracts": "^0.5.1",
+    "solc": "^0.8.17"
+  },
+  "scripts": {
+    "compile": "yarn solcjs --bin --abi --include-path node_modules/ --base-path . -o . AdAuction.sol AdAuctionFactory.sol"
+  }
 }

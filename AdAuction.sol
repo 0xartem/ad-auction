@@ -2,15 +2,14 @@
 
 pragma solidity ^0.8.0;
 
-import { IAdAuction } from './IAdAuction.sol';
-import { PriceOracle } from './PriceOracle.sol';
+import {IAdAuction} from "./IAdAuction.sol";
+import {PriceOracle} from "./PriceOracle.sol";
 
-contract AdAuction {
-    
+contract AdAuction is IAdAuction {
     using PriceOracle for uint256;
 
     error NotOwner();
-    
+
     error InvalidAuctionPeriod();
     error AuctionHasntStartedYet();
     error AuctionIsOver();
@@ -24,7 +23,7 @@ contract AdAuction {
     error HighestBidderCantWithdraw();
     error BidderAlreadyWithdrew();
     error BidWithdrawalFailed();
-    
+
     error AdAuctionBalanceIsTooLow();
     error OwnerWithdrawalFailed();
 
@@ -42,7 +41,7 @@ contract AdAuction {
     }
 
     address public immutable owner;
-    
+
     uint256 public constant MINIMUM_BID_REQUIREMENT = 0;
     uint256 public immutable startAuctionTime;
     uint256 public immutable endAuctionTime;
@@ -50,31 +49,52 @@ contract AdAuction {
 
     uint256 public ownerBalanceAvailable;
     address public highestBidderAddr;
-    mapping (address => Payer) public addressToPayer;
+    mapping(address => Payer) public addressToPayer;
 
-    constructor(uint256 _startAuctionTime, uint256 _endAuctionTime, uint256 _minimumBlockUsdBid) {
+    constructor(
+        uint256 _startAuctionTime,
+        uint256 _endAuctionTime,
+        uint256 _minimumBlockUsdBid
+    ) {
         owner = msg.sender;
 
         if (_endAuctionTime <= _startAuctionTime) revert InvalidAuctionPeriod();
-        if (_minimumBlockUsdBid < MINIMUM_BID_REQUIREMENT) revert InvalidMinimumBidRequirement();
+        if (_minimumBlockUsdBid < MINIMUM_BID_REQUIREMENT)
+            revert InvalidMinimumBidRequirement();
 
         startAuctionTime = _startAuctionTime;
         endAuctionTime = _endAuctionTime;
         minimumBlockUsdBid = _minimumBlockUsdBid * 1e18;
     }
 
-    function payForAd(string calldata _name, string calldata _imageUrl, string calldata _text, uint256 _blockUsdBid) payable external {
+    function bidOnAd(
+        string calldata _name,
+        string calldata _imageUrl,
+        string calldata _text,
+        uint256 _blockUsdBid
+    ) external payable {
         if (block.timestamp < startAuctionTime) revert AuctionHasntStartedYet();
         if (block.timestamp > endAuctionTime) revert AuctionIsOver();
 
-        if (_blockUsdBid <= addressToPayer[highestBidderAddr].blockUsdBid) revert HigherBidIsAvailable();
+        if (_blockUsdBid <= addressToPayer[highestBidderAddr].blockUsdBid)
+            revert HigherBidIsAvailable();
         if (_blockUsdBid < minimumBlockUsdBid) revert BidIsLowerThanMinimum();
-        if (msg.value.convertEthToUsd() < _blockUsdBid) revert PaidAmountIsLowerThanBid();
+        if (msg.value.convertEthToUsd() < _blockUsdBid)
+            revert PaidAmountIsLowerThanBid();
 
         Payer storage payer = addressToPayer[msg.sender];
         if (payer.blockUsdBid == 0) {
             // New Payer
-            payer = Payer(msg.value, 0, _blockUsdBid, 0, _name, _imageUrl, _text, false);
+            payer = Payer(
+                msg.value,
+                0,
+                _blockUsdBid,
+                0,
+                _name,
+                _imageUrl,
+                _text,
+                false
+            );
         } else {
             // Existing Payer
             payer.ethBalance += msg.value;
@@ -91,9 +111,27 @@ contract AdAuction {
         payer.timeLeft = timeLeft;
     }
 
+    function topUp() public payable {
+        if (block.timestamp < startAuctionTime) revert AuctionHasntStartedYet();
+        if (msg.value.convertEthToUsd() < _blockUsdBid)
+            revert PaidAmountIsLowerThanBid();
+
+        Payer storage payer = addressToPayer[msg.sender];
+        if (payer.blockUsdBid == 0) {
+            revert NoSuchPayer();
+        } else {
+            payer.ethBalance += msg.value;
+            payer.withdrew = false;
+        }
+
+        uint256 usdBalance = payer.ethBalance.getConversionRate();
+        uint256 timeLeft = (usdBalance / _blockUsdBid) * 12; // 12 secs per block
+        payer.timeLeft = timeLeft;
+    }
+
     // todo: the next bidder will be used if the first one runs out of funds
     // todo: implement logic so you can withdraw not all but a part depending on how long your ad was up
-    
+
     function withdrawBid(address receiver) external {
         if (block.timestamp <= endAuctionTime) revert AuctionIsNotOverYet();
         if (msg.sender == highestBidderAddr) revert HighestBidderCantWithdraw();
@@ -104,7 +142,7 @@ contract AdAuction {
 
         addressToPayer[msg.sender].withdrew = true;
 
-        (bool res, ) = receiver.call{ value: payer.ethAmount }(""); // convert to payable?
+        (bool res, ) = receiver.call{value: payer.ethAmount}(""); // convert to payable?
         if (!res) revert BidWithdrawalFailed();
     }
 
@@ -115,10 +153,11 @@ contract AdAuction {
             chargeForAdCalc();
         }
 
-        if (address(this).balance < ownerBalanceAvailable) revert AdAuctionBalanceIsTooLow(); // assert ?
+        if (address(this).balance < ownerBalanceAvailable)
+            revert AdAuctionBalanceIsTooLow(); // assert ?
         ownerBalanceAvailable = 0;
 
-        (bool res, ) = receiver.call{ value: ownerBalanceAvailable }("");
+        (bool res, ) = receiver.call{value: ownerBalanceAvailable}("");
         if (!res) revert OwnerWithdrawalFailed();
     }
 
@@ -129,13 +168,16 @@ contract AdAuction {
 
     function chargeForAdCalc() internal onlyOwner {
         if (winner.ethBalance == 0) revert NoFundsToCharge();
-        assert(winner.timeLeft == 0, "AdAuction::chargeForAd: Panic. Time left must be zero if eth balance is zero.");
+        assert(
+            winner.timeLeft == 0,
+            "AdAuction::chargeForAd: Panic. Time left must be zero if eth balance is zero."
+        );
 
         Payer storage winner = addressToPayer[highestBidderAddr];
         uint256 timeLeft = winner.timeLeft;
         uint256 cutOffTime = endAuctionTime + winner.timeLeft;
         uint256 timeUsed = block.timestamp - endAuctionTime;
-        
+
         if (timeUsed >= timeLeft) {
             winner.ethUsed += winner.ethBalance;
             ownerBalanceAvailable += winner.ethBalance;
@@ -154,6 +196,14 @@ contract AdAuction {
             winner.ethUsed += paidInEth;
             ownerBalanceAvailable += paidInEth;
         }
+    }
+
+    receive() external payable {
+        topUp();
+    }
+
+    fallback() external payable {
+        topUp();
     }
 
     modifier onlyOwner() {
